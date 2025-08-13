@@ -15,13 +15,14 @@ import (
 func main() {
 	var fn, out string
 	var sz int
-	var x, arm, ent bool
+	var x, arm, ent, base bool
 	flag.StringVar(&fn, "f", "", "firmware file")
 	flag.StringVar(&out, "o", "", "output file")
 	flag.IntVar(&sz, "s", 256, "bytes to dump")
 	flag.BoolVar(&x, "x", false, "extract all")
 	flag.BoolVar(&arm, "arm", false, "parse ARM vectors")
 	flag.BoolVar(&ent, "e", false, "entropy scan")
+	flag.BoolVar(&base, "b", false, "find base addr")
 	flag.Parse()
 
 	if fn == "" {
@@ -29,16 +30,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	if base {
+		findBase(fn)
+		return
+	}
 	if ent {
 		scanEnt(fn)
 		return
 	}
-
 	if arm {
 		parseARM(fn)
 		return
 	}
-
 	if x {
 		if isELF(fn) {
 			extrELF(fn)
@@ -49,7 +52,6 @@ func main() {
 		}
 		return
 	}
-
 	if isELF(fn) {
 		parseELF(fn)
 	} else if strings.HasSuffix(fn, ".hex") {
@@ -65,15 +67,32 @@ func main() {
 	}
 }
 
+func findBase(fn string) {
+	buf := load(fn)
+	if len(buf) < 0x1000 {
+		fmt.Println("too small for base scan")
+		return
+	}
+
+	// look for ARM vector table pattern
+	for off := 0; off < len(buf)-0x40; off += 0x100 {
+		sp := binary.LittleEndian.Uint32(buf[off:])
+		pc := binary.LittleEndian.Uint32(buf[off+4:])
+		if sp>>20 == 0x200 && (pc&0xFFFFFFFE) > 0x08000000 && (pc&0xFFFFFFFE) < 0x08100000 {
+			fmt.Printf("possible base: 0x%08x\n", 0x08000000+uint32(off))
+			fmt.Printf("SP: 0x%08x PC: 0x%08x\n", sp, pc)
+		}
+	}
+}
+
 func scanEnt(fn string) {
 	buf := load(fn)
 	if len(buf) == 0 {
 		return
 	}
-
 	win := 256
 	for i := 0; i < len(buf)-win; i += win {
-		e := ent(buf[i:i+win])
+		e := ent(buf[i : i+win])
 		if e > 7.5 {
 			fmt.Printf("0x%08x-0x%08x entropy %.2f [PACKED]\n", i, i+win, e)
 		}
@@ -85,7 +104,6 @@ func ent(b []byte) float64 {
 	for _, v := range b {
 		cnt[v]++
 	}
-
 	h := 0.0
 	for _, c := range cnt {
 		if c == 0 {
@@ -103,18 +121,15 @@ func parseARM(fn string) {
 		fmt.Println("too small for ARM vectors")
 		return
 	}
-
 	sp := binary.LittleEndian.Uint32(buf[0:4])
 	pc := binary.LittleEndian.Uint32(buf[4:8])
 	nmi := binary.LittleEndian.Uint32(buf[8:12])
 	hard := binary.LittleEndian.Uint32(buf[12:16])
-
 	fmt.Printf("ARM Cortex-M vectors:\n")
 	fmt.Printf("SP:  0x%08x\n", sp)
 	fmt.Printf("PC:  0x%08x\n", pc)
 	fmt.Printf("NMI: 0x%08x\n", nmi)
 	fmt.Printf("HARDFAULT: 0x%08x\n", hard)
-
 	if pc&1 != 0 {
 		fmt.Println("Thumb mode enabled")
 	}

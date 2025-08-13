@@ -9,6 +9,7 @@ go run . -f firmware.elf
 go run . -f firmware.hex -x
 go run . -f fw.bin -arm
 go run . -f fw.bin -e
+go run . -f fw.bin -b
 ```
 
 ## test
