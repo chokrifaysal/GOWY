@@ -2,6 +2,14 @@
 
 Extract and analyze firmware images.
 
+## test
+```bash
+cd tests
+python3 gen.py
+../gowy -f test.hex
+../gowy -f test.elf -x
+```
+
 ## usage
 ```bash
 go run . -f firmware.bin
