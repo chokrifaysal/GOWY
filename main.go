@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"debug/elf"
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 )
 
 func main() {
@@ -21,6 +24,8 @@ func main() {
 
 	if elf.IsELF(fn) {
 		parseELF(fn)
+	} else if strings.HasSuffix(fn, ".hex") {
+		parseHEX(fn, sz)
 	} else {
 		buf := load(fn)
 		dump(buf, sz)
@@ -92,4 +97,55 @@ func parseELF(fn string) {
 			dump(buf, 256)
 		}
 	}
+}
+
+func parseHEX(fn string, sz int) {
+	f, err := os.Open(fn)
+	if err != nil {
+		fmt.Println("hex open:", err)
+		return
+	}
+	defer f.Close()
+
+	var mem []byte
+	max := 0
+
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		l := sc.Text()
+		if len(l) < 11 || l[0] != ':' {
+			continue
+		}
+
+		ln, _ := strconv.ParseUint(l[1:3], 16, 8)
+		if ln == 0 {
+			continue
+		}
+
+		addr, _ := strconv.ParseUint(l[3:7], 16, 16)
+		typ, _ := strconv.ParseUint(l[7:9], 16, 8)
+		if typ != 0 {
+			continue
+		}
+
+		end := 9 + int(ln*2)
+		if end > len(l) {
+			continue
+		}
+
+		if int(addr)+int(ln) > max {
+			nmem := make([]byte, int(addr)+int(ln))
+			copy(nmem, mem)
+			mem = nmem
+			max = int(addr) + int(ln)
+		}
+
+		for i := 0; i < int(ln); i++ {
+			b, _ := strconv.ParseUint(l[9+i*2:11+i*2], 16, 8)
+			mem[addr+uint64(i)] = byte(b)
+		}
+	}
+
+	fmt.Printf("HEX: %s (%d bytes)\n", fn, len(mem))
+	dump(mem, sz)
 }
