@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"debug/elf"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"os"
@@ -14,15 +15,22 @@ func main() {
 	var fn, out string
 	var sz int
 	var x bool
+	var arm bool
 	flag.StringVar(&fn, "f", "", "firmware file")
 	flag.StringVar(&out, "o", "", "output file")
 	flag.IntVar(&sz, "s", 256, "bytes to dump")
 	flag.BoolVar(&x, "x", false, "extract all")
+	flag.BoolVar(&arm, "arm", false, "parse ARM vectors")
 	flag.Parse()
 
 	if fn == "" {
 		fmt.Println("need -f file")
 		os.Exit(1)
+	}
+
+	if arm {
+		parseARM(fn)
+		return
 	}
 
 	if x {
@@ -48,6 +56,29 @@ func main() {
 		} else {
 			dump(buf, sz)
 		}
+	}
+}
+
+func parseARM(fn string) {
+	buf := load(fn)
+	if len(buf) < 0x40 {
+		fmt.Println("too small for ARM vectors")
+		return
+	}
+
+	sp := binary.LittleEndian.Uint32(buf[0:4])
+	pc := binary.LittleEndian.Uint32(buf[4:8])
+	nmi := binary.LittleEndian.Uint32(buf[8:12])
+	hard := binary.LittleEndian.Uint32(buf[12:16])
+
+	fmt.Printf("ARM Cortex-M vectors:\n")
+	fmt.Printf("SP:  0x%08x\n", sp)
+	fmt.Printf("PC:  0x%08x\n", pc)
+	fmt.Printf("NMI: 0x%08x\n", nmi)
+	fmt.Printf("HARDFAULT: 0x%08x\n", hard)
+
+	if pc&1 != 0 {
+		fmt.Println("Thumb mode enabled")
 	}
 }
 
