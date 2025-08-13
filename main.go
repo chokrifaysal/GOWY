@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -14,18 +15,23 @@ import (
 func main() {
 	var fn, out string
 	var sz int
-	var x bool
-	var arm bool
+	var x, arm, ent bool
 	flag.StringVar(&fn, "f", "", "firmware file")
 	flag.StringVar(&out, "o", "", "output file")
 	flag.IntVar(&sz, "s", 256, "bytes to dump")
 	flag.BoolVar(&x, "x", false, "extract all")
 	flag.BoolVar(&arm, "arm", false, "parse ARM vectors")
+	flag.BoolVar(&ent, "e", false, "entropy scan")
 	flag.Parse()
 
 	if fn == "" {
 		fmt.Println("need -f file")
 		os.Exit(1)
+	}
+
+	if ent {
+		scanEnt(fn)
+		return
 	}
 
 	if arm {
@@ -57,6 +63,38 @@ func main() {
 			dump(buf, sz)
 		}
 	}
+}
+
+func scanEnt(fn string) {
+	buf := load(fn)
+	if len(buf) == 0 {
+		return
+	}
+
+	win := 256
+	for i := 0; i < len(buf)-win; i += win {
+		e := ent(buf[i:i+win])
+		if e > 7.5 {
+			fmt.Printf("0x%08x-0x%08x entropy %.2f [PACKED]\n", i, i+win, e)
+		}
+	}
+}
+
+func ent(b []byte) float64 {
+	cnt := [256]int{}
+	for _, v := range b {
+		cnt[v]++
+	}
+
+	h := 0.0
+	for _, c := range cnt {
+		if c == 0 {
+			continue
+		}
+		p := float64(c) / float64(len(b))
+		h -= p * math.Log2(p)
+	}
+	return h
 }
 
 func parseARM(fn string) {
