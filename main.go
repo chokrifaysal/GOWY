@@ -11,15 +11,29 @@ import (
 )
 
 func main() {
-	var fn string
+	var fn, out string
 	var sz int
+	var x bool
 	flag.StringVar(&fn, "f", "", "firmware file")
+	flag.StringVar(&out, "o", "", "output file")
 	flag.IntVar(&sz, "s", 256, "bytes to dump")
+	flag.BoolVar(&x, "x", false, "extract all")
 	flag.Parse()
 
 	if fn == "" {
 		fmt.Println("need -f file")
 		os.Exit(1)
+	}
+
+	if x {
+		if isELF(fn) {
+			extrELF(fn)
+		} else if strings.HasSuffix(fn, ".hex") {
+			extrHEX(fn)
+		} else {
+			fmt.Println("raw extract not supported")
+		}
+		return
 	}
 
 	if isELF(fn) {
@@ -28,7 +42,12 @@ func main() {
 		parseHEX(fn, sz)
 	} else {
 		buf := load(fn)
-		dump(buf, sz)
+		if out != "" {
+			os.WriteFile(out, buf, 0644)
+			fmt.Println("wrote", out)
+		} else {
+			dump(buf, sz)
+		}
 	}
 }
 
@@ -38,7 +57,6 @@ func isELF(fn string) bool {
 		return false
 	}
 	defer f.Close()
-
 	buf := make([]byte, 4)
 	n, err := f.Read(buf)
 	return err == nil && n == 4 && string(buf) == "\x7fELF"
@@ -51,7 +69,6 @@ func load(fn string) []byte {
 		return nil
 	}
 	defer f.Close()
-
 	st, _ := f.Stat()
 	buf := make([]byte, st.Size())
 	n, err := f.Read(buf)
@@ -97,11 +114,9 @@ func parseELF(fn string) {
 		return
 	}
 	defer f.Close()
-
 	fmt.Printf("ELF: %s\n", fn)
 	fmt.Printf("Class: %s\n", f.FileHeader.Class)
 	fmt.Printf("Machine: %s\n", f.FileHeader.Machine)
-
 	for _, sec := range f.Sections {
 		if sec.Type == elf.SHT_PROGBITS && sec.Size > 0 {
 			fmt.Printf("\nSection: %s (0x%x bytes)\n", sec.Name, sec.Size)
@@ -118,46 +133,73 @@ func parseHEX(fn string, sz int) {
 		return
 	}
 	defer f.Close()
+	mem := loadHEX(f)
+	fmt.Printf("HEX: %s (%d bytes)\n", fn, len(mem))
+	dump(mem, sz)
+}
 
+func extrELF(fn string) {
+	f, err := elf.Open(fn)
+	if err != nil {
+		fmt.Println("elf open:", err)
+		return
+	}
+	defer f.Close()
+	os.MkdirAll("extr", 0755)
+	for _, sec := range f.Sections {
+		if sec.Type == elf.SHT_PROGBITS && sec.Size > 0 {
+			buf, _ := sec.Data()
+			out := fmt.Sprintf("extr/%s.bin", sec.Name)
+			os.WriteFile(out, buf, 0644)
+			fmt.Println("wrote", out)
+		}
+	}
+}
+
+func extrHEX(fn string) {
+	f, err := os.Open(fn)
+	if err != nil {
+		fmt.Println("hex open:", err)
+		return
+	}
+	defer f.Close()
+	mem := loadHEX(f)
+	os.WriteFile("extr/firmware.bin", mem, 0644)
+	fmt.Println("wrote extr/firmware.bin")
+}
+
+func loadHEX(f *os.File) []byte {
 	var mem []byte
 	max := 0
-
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		l := sc.Text()
 		if len(l) < 11 || l[0] != ':' {
 			continue
 		}
-
 		ln, _ := strconv.ParseUint(l[1:3], 16, 8)
 		if ln == 0 {
 			continue
 		}
-
 		addr, _ := strconv.ParseUint(l[3:7], 16, 16)
 		typ, _ := strconv.ParseUint(l[7:9], 16, 8)
 		if typ != 0 {
 			continue
 		}
-
 		end := 9 + int(ln*2)
 		if end > len(l) {
 			continue
 		}
-
 		if int(addr)+int(ln) > max {
 			nmem := make([]byte, int(addr)+int(ln))
 			copy(nmem, mem)
 			mem = nmem
 			max = int(addr) + int(ln)
 		}
-
 		for i := 0; i < int(ln); i++ {
 			b, _ := strconv.ParseUint(l[9+i*2:11+i*2], 16, 8)
 			mem[addr+uint64(i)] = byte(b)
 		}
 	}
-
-	fmt.Printf("HEX: %s (%d bytes)\n", fn, len(mem))
-	dump(mem, sz)
+	return mem
 }
