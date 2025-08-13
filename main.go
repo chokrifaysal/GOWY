@@ -1,6 +1,7 @@
 package main
 
 import (
+	"debug/elf"
 	"flag"
 	"fmt"
 	"os"
@@ -18,12 +19,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	buf := load(fn)
-	if len(buf) == 0 {
-		os.Exit(1)
+	if elf.IsELF(fn) {
+		parseELF(fn)
+	} else {
+		buf := load(fn)
+		dump(buf, sz)
 	}
-
-	dump(buf, sz)
 }
 
 func load(fn string) []byte {
@@ -69,5 +70,26 @@ func dump(buf []byte, sz int) {
 			fmt.Printf("%c", c)
 		}
 		fmt.Println()
+	}
+}
+
+func parseELF(fn string) {
+	f, err := elf.Open(fn)
+	if err != nil {
+		fmt.Println("elf open:", err)
+		return
+	}
+	defer f.Close()
+
+	fmt.Printf("ELF: %s\n", fn)
+	fmt.Printf("Class: %s\n", f.FileHeader.Class)
+	fmt.Printf("Machine: %s\n", f.FileHeader.Machine)
+
+	for _, sec := range f.Sections {
+		if sec.Type == elf.SHT_PROGBITS && sec.Size > 0 {
+			fmt.Printf("\nSection: %s (0x%x bytes)\n", sec.Name, sec.Size)
+			buf, _ := sec.Data()
+			dump(buf, 256)
+		}
 	}
 }
