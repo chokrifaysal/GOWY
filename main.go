@@ -22,7 +22,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if elf.IsELF(fn) {
+	if isELF(fn) {
 		parseELF(fn)
 	} else if strings.HasSuffix(fn, ".hex") {
 		parseHEX(fn, sz)
@@ -30,6 +30,18 @@ func main() {
 		buf := load(fn)
 		dump(buf, sz)
 	}
+}
+
+func isELF(fn string) bool {
+	f, err := os.Open(fn)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	buf := make([]byte, 4)
+	n, err := f.Read(buf)
+	return err == nil && n == 4 && string(buf) == "\x7fELF"
 }
 
 func load(fn string) []byte {
