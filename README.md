@@ -5,6 +5,7 @@ Extract and analyze firmware images.
 ## usage
 ```bash
 go run . -f firmware.bin
+go run . -f firmware.bin -s 512
 ```
 ## build
 ```bash
