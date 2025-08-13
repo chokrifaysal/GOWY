@@ -10,19 +10,22 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 func main() {
 	var fn, out string
-	var sz int
-	var x, arm, ent, base bool
+	var sz, min int
+	var x, arm, ent, base, str bool
 	flag.StringVar(&fn, "f", "", "firmware file")
 	flag.StringVar(&out, "o", "", "output file")
 	flag.IntVar(&sz, "s", 256, "bytes to dump")
+	flag.IntVar(&min, "m", 4, "min string len")
 	flag.BoolVar(&x, "x", false, "extract all")
 	flag.BoolVar(&arm, "arm", false, "parse ARM vectors")
 	flag.BoolVar(&ent, "e", false, "entropy scan")
 	flag.BoolVar(&base, "b", false, "find base addr")
+	flag.BoolVar(&str, "str", false, "dump strings")
 	flag.Parse()
 
 	if fn == "" {
@@ -30,6 +33,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	if str {
+		dumpStr(fn, min)
+		return
+	}
 	if base {
 		findBase(fn)
 		return
@@ -67,14 +74,26 @@ func main() {
 	}
 }
 
+func dumpStr(fn string, min int) {
+	buf := load(fn)
+	for off := 0; off < len(buf); {
+		end := off
+		for end < len(buf) && buf[end] >= 32 && buf[end] < 127 {
+			end++
+		}
+		if end-off >= min {
+			fmt.Printf("%08x: %s\n", off, string(buf[off:end]))
+		}
+		off = end + 1
+	}
+}
+
 func findBase(fn string) {
 	buf := load(fn)
 	if len(buf) < 0x1000 {
 		fmt.Println("too small for base scan")
 		return
 	}
-
-	// look for ARM vector table pattern
 	for off := 0; off < len(buf)-0x40; off += 0x100 {
 		sp := binary.LittleEndian.Uint32(buf[off:])
 		pc := binary.LittleEndian.Uint32(buf[off+4:])
