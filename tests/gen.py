@@ -4,10 +4,5 @@ import subprocess
 
 os.chdir(os.path.dirname(__file__))
 
-subprocess.run(["python3", "test_hex.py"])
-subprocess.run(["python3", "test_elf.py"])
-subprocess.run(["python3", "test_bin.py"])
-subprocess.run(["python3", "test_arm.py"])
-subprocess.run(["python3", "test_enc.py"])
-subprocess.run(["python3", "test_base.py"])
-subprocess.run(["python3", "test_str.py"])
+for t in ["test_hex", "test_elf", "test_bin", "test_arm", "test_enc", "test_base", "test_str", "test_crc"]:
+    subprocess.run(["python3", t + ".py"])

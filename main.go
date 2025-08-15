@@ -6,17 +6,17 @@ import (
 	"encoding/binary"
 	"flag"
 	"fmt"
+	"hash/crc32"
 	"math"
 	"os"
 	"strconv"
 	"strings"
-	"unicode"
 )
 
 func main() {
 	var fn, out string
 	var sz, min int
-	var x, arm, ent, base, str bool
+	var x, arm, ent, base, str, crc bool
 	flag.StringVar(&fn, "f", "", "firmware file")
 	flag.StringVar(&out, "o", "", "output file")
 	flag.IntVar(&sz, "s", 256, "bytes to dump")
@@ -26,6 +26,7 @@ func main() {
 	flag.BoolVar(&ent, "e", false, "entropy scan")
 	flag.BoolVar(&base, "b", false, "find base addr")
 	flag.BoolVar(&str, "str", false, "dump strings")
+	flag.BoolVar(&crc, "crc", false, "calc crc32")
 	flag.Parse()
 
 	if fn == "" {
@@ -33,6 +34,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	if crc {
+		calcCRC(fn)
+		return
+	}
 	if str {
 		dumpStr(fn, min)
 		return
@@ -72,6 +77,16 @@ func main() {
 			dump(buf, sz)
 		}
 	}
+}
+
+func calcCRC(fn string) {
+	buf := load(fn)
+	if len(buf) == 0 {
+		return
+	}
+	h := crc32.NewIEEE()
+	h.Write(buf)
+	fmt.Printf("CRC32: 0x%08x (%s)\n", h.Sum32(), fn)
 }
 
 func dumpStr(fn string, min int) {
