@@ -19,7 +19,7 @@ import (
 func main() {
 	var fn, out string
 	var sz, min int
-	var x, arm, ent, base, str, crc, hash bool
+	var x, arm, ent, base, str, crc, hash, xor bool
 	flag.StringVar(&fn, "f", "", "firmware file")
 	flag.StringVar(&out, "o", "", "output file")
 	flag.IntVar(&sz, "s", 256, "bytes to dump")
@@ -31,6 +31,7 @@ func main() {
 	flag.BoolVar(&str, "str", false, "dump strings")
 	flag.BoolVar(&crc, "crc", false, "calc crc32")
 	flag.BoolVar(&hash, "hash", false, "calc hashes")
+	flag.BoolVar(&xor, "xor", false, "xor key scan")
 	flag.Parse()
 
 	if fn == "" {
@@ -38,6 +39,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	if xor {
+		scanXOR(fn)
+		return
+	}
 	if hash {
 		calcHash(fn)
 		return
@@ -98,6 +103,75 @@ func calcHash(fn string) {
 	fmt.Printf("MD5:    %x (%s)\n", md5h, fn)
 	fmt.Printf("SHA1:   %x (%s)\n", sha1h, fn)
 	fmt.Printf("SHA256: %x (%s)\n", sha256h, fn)
+}
+
+func scanXOR(fn string) {
+	buf := load(fn)
+	if len(buf) < 64 {
+		fmt.Println("too small for xor scan")
+		return
+	}
+
+	step := len(buf) / 8
+	if step < 64 {
+		step = 64
+	}
+
+	for key := 1; key < 256; key++ {
+		bestScore := 0.0
+		bestRegion := 0
+		bestVariety := 0
+
+		for region := 0; region < len(buf); region += step {
+			end := region + 256
+			if end > len(buf) {
+				end = len(buf)
+			}
+			if end-region < 32 {
+				continue
+			}
+
+			score := 0
+			total := 0
+			charSet := make(map[byte]int)
+			for i := region; i < end; i++ {
+				b := buf[i] ^ byte(key)
+				total++
+				charSet[b]++
+				if (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == ' ' || b == '\t' || b == '\n' || b == '.' || b == '_' {
+					score++
+				}
+			}
+
+			variety := len(charSet)
+			pct := float64(score) * 100.0 / float64(total)
+
+			// Check for repetitive patterns (low variety)
+			if variety < 4 {
+				continue
+			}
+
+			if pct > bestScore {
+				bestScore = pct
+				bestRegion = region
+				bestVariety = variety
+			}
+		}
+
+		if bestScore > 60 && bestVariety > 10 {
+			fmt.Printf("XOR key 0x%02x (%.1f%% readable at 0x%x)\n", key, bestScore, bestRegion)
+			fmt.Print("Sample: ")
+			for i := 0; i < 48 && i+bestRegion < len(buf); i++ {
+				c := buf[i+bestRegion] ^ byte(key)
+				if c >= 32 && c <= 126 {
+					fmt.Printf("%c", c)
+				} else {
+					fmt.Print(".")
+				}
+			}
+			fmt.Println()
+		}
+	}
 }
 
 func calcCRC(fn string) {
