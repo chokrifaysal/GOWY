@@ -12,6 +12,7 @@ go run . -f fw.bin -e
 go run . -f fw.bin -b
 go run . -f fw.bin -str
 go run . -f fw.bin -crc
+go run . -f fw.bin -hash
 ```
 
 ## test

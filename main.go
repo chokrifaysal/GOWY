@@ -2,6 +2,9 @@ package main
 
 import (
 	"bufio"
+	"crypto/md5"
+	"crypto/sha1"
+	"crypto/sha256"
 	"debug/elf"
 	"encoding/binary"
 	"flag"
@@ -16,7 +19,7 @@ import (
 func main() {
 	var fn, out string
 	var sz, min int
-	var x, arm, ent, base, str, crc bool
+	var x, arm, ent, base, str, crc, hash bool
 	flag.StringVar(&fn, "f", "", "firmware file")
 	flag.StringVar(&out, "o", "", "output file")
 	flag.IntVar(&sz, "s", 256, "bytes to dump")
@@ -27,6 +30,7 @@ func main() {
 	flag.BoolVar(&base, "b", false, "find base addr")
 	flag.BoolVar(&str, "str", false, "dump strings")
 	flag.BoolVar(&crc, "crc", false, "calc crc32")
+	flag.BoolVar(&hash, "hash", false, "calc hashes")
 	flag.Parse()
 
 	if fn == "" {
@@ -34,6 +38,10 @@ func main() {
 		os.Exit(1)
 	}
 
+	if hash {
+		calcHash(fn)
+		return
+	}
 	if crc {
 		calcCRC(fn)
 		return
@@ -77,6 +85,19 @@ func main() {
 			dump(buf, sz)
 		}
 	}
+}
+
+func calcHash(fn string) {
+	buf := load(fn)
+	if len(buf) == 0 {
+		return
+	}
+	md5h := md5.Sum(buf)
+	sha1h := sha1.Sum(buf)
+	sha256h := sha256.Sum256(buf)
+	fmt.Printf("MD5:    %x (%s)\n", md5h, fn)
+	fmt.Printf("SHA1:   %x (%s)\n", sha1h, fn)
+	fmt.Printf("SHA256: %x (%s)\n", sha256h, fn)
 }
 
 func calcCRC(fn string) {
